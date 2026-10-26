@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VoltGuard AI</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<style>
+:root{--bg:#0a1220;--panel:#111c2e;--line:#243350;--txt:#fff;--mut:#b6c2d4;--dim:#6b7a93;--cy:#22d3ee;--am:#f5b042;--rd:#ef5b5b;--gr:#34d399}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 Calibri,Segoe UI,Arial,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line)}
+.logo{height:38px;width:38px;display:block}h1{font-size:22px;margin:0;font-weight:800}h1 span{font-weight:400;color:var(--mut)}
+.sp{flex:1}.clock{color:var(--mut);font-size:13px}
+button,select{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--cy)}button.pri{border-color:var(--cy);color:var(--cy)}button.warn{border-color:var(--am);color:var(--am)}
+main{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:16px 20px}
+@media(max-width:1100px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+h2{font-size:12px;letter-spacing:1.5px;color:var(--dim);margin:0 0 10px;text-transform:uppercase}
+.col{display:flex;flex-direction:column;gap:16px}
+.site{margin-bottom:12px}.site b{display:block;margin-bottom:4px}.site small{color:var(--dim)}
+.circ{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.circ:hover{border-color:var(--line)}.circ .n{flex:1;font-size:14px}.circ .v{color:var(--dim);font-size:12px;white-space:nowrap}
+.chip{font-size:11px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}
+.normal{color:var(--gr);border-color:var(--gr)}.caution{color:var(--am);border-color:var(--am)}.critical{color:var(--rd);border-color:var(--rd)}.sensor_check{color:var(--cy);border-color:var(--cy)}
+.ctl{display:grid;gap:8px}.ctl select,.ctl button{width:100%}
+.tri{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
+.tri:hover,.tri.sel{border-color:var(--cy)}.rank{width:28px;height:28px;border-radius:50%;border:1px solid var(--cy);color:var(--cy);display:grid;place-items:center;font-weight:700;flex:none}
+.tri .t{flex:1}.tri .r{color:var(--mut);font-size:13px}
+.empty{color:var(--dim);padding:8px 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:1100px){.grid2{grid-template-columns:1fr}}
+.expl{color:var(--mut)}.guid{border:1px solid var(--am);border-radius:10px;padding:10px;color:var(--txt);margin-top:10px}
+.q{border:1px solid var(--cy);border-radius:10px;padding:12px;margin-top:10px}.q .opts{display:grid;gap:6px;margin-top:8px}
+.step{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px}.step code{color:var(--cy);flex:none;width:170px;font:12px Consolas,monospace;padding-top:2px}.step .tm{color:var(--dim);flex:none;width:44px}
+pre{white-space:pre-wrap;margin:0;font:13px/1.45 Consolas,monospace;color:var(--mut)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.foot{color:var(--dim);font-size:12px;padding:6px 20px 20px}
+svg{width:100%;height:auto;display:block}.lg{display:flex;gap:14px;font-size:12px;color:var(--mut);margin-top:6px;flex-wrap:wrap}.lg i{display:inline-block;width:14px;height:3px;margin-right:5px;vertical-align:middle}
+</style></head><body>
+<header><img src="/static/logo.svg" alt="VoltGuard AI logo" class="logo"><h1>VoltGuard <span>AI</span></h1><span class="chip normal" id="llm" style="display:none"></span><div class="sp"></div>
+<span class="clock" id="clock"></span>
+<button onclick="tick(30)" class="warn" title="Simulate time passing so follow-ups and escalations fire">Advance 30 min</button>
+<button onclick="runAll()">Re-run agent</button><button onclick="report()">Report</button><button onclick="reset()">Reset demo</button></header>
+<main>
+ <div class="col">
+  <div class="card ctl"><h2>Demo: inject a scenario</h2>
+   <select id="selC"></select><select id="selS"></select>
+   <button class="pri" onclick="inject()">Inject 8 hours of readings</button>
+   <small style="color:var(--dim)">Simulated data. Injected readings go through the same agent as live data would.</small></div>
+  <div class="card"><h2>Sites &amp; circuits</h2><div id="sites"></div></div>
+ </div>
+ <div class="col">
+  <div class="card"><h2>Today's priorities (agent triage)</h2><div id="tri"></div></div>
+  <div class="card" id="casePanel" style="display:none"></div>
+ </div>
+</main>
+<div class="foot">VoltGuard AI is a decision-support prototype running on simulated data. It is not a certified protection system and never operates equipment. Demo limits must be validated by a licensed electrician.</div>
+<script>
+let S=null,sel=null;
+const $=id=>document.getElementById(id);
+const api=(p,b)=>fetch('/api/'+p,b===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+const chip=s=>`<span class="chip ${s}">${s==='sensor_check'?'SENSOR CHECK':s.toUpperCase()}</span>`;
+async function load(){
+  S=await api('state');
+  $('clock').textContent='Demo clock: +'+S.clock_min+' min';
+  if(S.llm){$('llm').style.display='';$('llm').textContent='LLM wording on'}
+  if(!$('selC').options.length){
+    S.sites.forEach(s=>s.circuits.forEach(c=>$('selC').add(new Option(s.name+' / '+c.name,c.id))));
+    Object.entries(S.scenarios).forEach(([k,v])=>$('selS').add(new Option(v,k)));
+    $('selC').value=7;$('selS').value='drift';
+  }
+  $('sites').innerHTML=S.sites.map(s=>`<div class="site"><b>${s.name}</b><small>${s.kind}</small>`+s.circuits.map(c=>
+    `<div class="circ" onclick="${c.case_id?`openCase(${c.case_id})`:`$('selC').value=${c.id}`}"><span class="n">${c.name}</span>
+     <span class="v">${c.last.temp==null?'--':c.last.temp+'°C'} · ${c.last.current}A</span>${chip(c.severity)}</div>`).join('')+'</div>').join('');
+  $('tri').innerHTML=S.triage.length?S.triage.map(t=>`<div class="tri ${sel===t.case_id?'sel':''}" onclick="openCase(${t.case_id})"><div class="rank">${t.rank}</div>
+    <div class="t"><b>${t.site} · ${t.circuit}</b> ${chip(t.severity)}<div class="r">${t.reasons.join(' · ')}${t.status==='awaiting_user'?' · <span style="color:var(--cy)">waiting for your answer</span>':''}${t.escalation?' · escalation level '+t.escalation:''}</div></div></div>`).join('')
+    :'<div class="empty">No open cases. Inject a scenario to see the agent work.</div>';
+  if(sel)openCase(sel,true);
+}
+async function inject(){const r=await api('inject',{circuit_id:+$('selC').value,scenario:$('selS').value});
+  await load(); if(r.case_id)openCase(r.case_id); else {sel=null;$('casePanel').style.display='none'}}
+async function runAll(){await api('run',{});load()}
+async function tick(m){await api('tick',{minutes:m});load()}
+async function reset(){await api('reset',{});sel=null;$('casePanel').style.display='none';load()}
+async function report(){const t=await (await fetch('/api/report')).text();const w=window.open('','_blank');w.document.write('<pre style="font:14px monospace;white-space:pre-wrap;padding:20px">'+t.replace(/</g,'&lt;')+'</pre>')}
+async function answer(id,k){await api(`cases/${id}/answer`,{answer:k});load()}
+async function ack(id){await api(`cases/${id}/ack`,{});load()}
+async function resolve(id){await api(`cases/${id}/resolve`,{});sel=null;$('casePanel').style.display='none';load()}
+function chart(d){
+  const s=d.series,W=640,H=230,p={l:38,r:10,t:10,b:22};
+  const ys=s.map(x=>x.temp).concat(s.map(x=>x.expected),[d.limits.temp_caution]).filter(v=>v!=null);
+  const lo=Math.floor(Math.min(...ys)-3),hi=Math.ceil(Math.max(...ys)+3);
+  const X=i=>p.l+i*(W-p.l-p.r)/(s.length-1),Y=v=>p.t+(hi-v)*(H-p.t-p.b)/(hi-lo);
+  const path=(k,dash)=>{let o='',pen=false;s.forEach((r,i)=>{if(r[k]==null){pen=false;return}o+=(pen?'L':'M')+X(i).toFixed(1)+' '+Y(r[k]).toFixed(1);pen=true});return o};
+  const g=[0,1,2,3,4].map(i=>{const v=lo+(hi-lo)*i/4;return `<line x1="${p.l}" x2="${W-p.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#243350"/><text x="${p.l-6}" y="${Y(v)+4}" fill="#6b7a93" font-size="11" text-anchor="end">${v.toFixed(0)}</text>`}).join('');
+  const hl=d.limits.temp_caution;
+  return `<svg viewBox="0 0 ${W} ${H}">${g}<line x1="${p.l}" x2="${W-p.r}" y1="${Y(hl)}" y2="${Y(hl)}" stroke="#f5b042" stroke-dasharray="5 4"/>
+   <path d="${path('expected')}" fill="none" stroke="#b6c2d4" stroke-width="2" stroke-dasharray="3 3"/><path d="${path('temp')}" fill="none" stroke="#22d3ee" stroke-width="2.5"/>
+   <text x="${W/2}" y="${H-4}" fill="#6b7a93" font-size="11" text-anchor="middle">last 48 hourly readings</text></svg>
+   <div class="lg"><span><i style="background:#22d3ee"></i>Measured temperature (°C)</span><span><i style="background:#b6c2d4"></i>Expected for this circuit at this load &amp; ambient</span><span><i style="background:#f5b042"></i>Fixed caution limit</span></div>`;
+}
+async function openCase(id,quiet){
+  sel=id;const d=await api('cases/'+id);if(d.error)return;const c=d.case,P=$('casePanel');P.style.display='';
+  const q=c.status==='awaiting_user'&&c.question?`<div class="q"><b>The agent needs your input</b><div>${c.question}</div><div class="opts">`+
+    Object.entries(d.options).map(([k,v])=>`<button onclick="answer(${id},'${k}')">${v}</button>`).join('')+`</div></div>`:'';
+  const wo=d.work_order?`<h2 style="margin-top:14px">Work order</h2><pre><b>${d.work_order.code}</b> [${d.work_order.priority}] ${d.work_order.status}\n${d.work_order.title}\n\n${d.work_order.body}</pre>`:'';
+  P.innerHTML=`<h2>Case ${c.id} · ${d.circuit.site} / ${d.circuit.name}</h2>
+   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${chip(c.severity)}<span class="chip normal" style="color:var(--mut);border-color:var(--line)">${c.pattern.replace('_',' ')}</span>
+   <span style="color:var(--mut)">confidence ${(c.confidence*100).toFixed(0)}%</span><span style="color:var(--mut)">status: ${c.status.replace('_',' ')}</span>${c.escalation?`<span class="chip critical">ESCALATION ${c.escalation}</span>`:''}</div>
+   <p class="expl">${c.explanation||''}</p>${chart(d)}<div class="guid"><b>Safe next step</b><div>${c.guidance}</div></div>${q}
+   <div class="row">${c.ack_min==null?`<button class="pri" onclick="ack(${id})">Acknowledge &amp; approve work order</button>`:''}<button onclick="resolve(${id})">Mark resolved</button></div>${wo}
+   <h2 style="margin-top:14px">What the agent did</h2>`+d.steps.map(s=>`<div class="step"><span class="tm">+${s.t_min}m</span><code>${s.tool}</code><span>${s.summary}</span></div>`).join('');
+  if(!quiet)P.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+load();
+</script></body></html>
